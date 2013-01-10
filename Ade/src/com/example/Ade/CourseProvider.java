@@ -3,16 +3,41 @@ package com.example.Ade;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
-import android.content.ComponentName;
-import android.content.ContentResolver;
-import android.content.Context;
-import android.content.Intent;
+import android.content.*;
+import android.database.ContentObserver;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.widget.RemoteViews;
 import android.widget.Toast;
+
+import java.util.Random;
+
+/**
+ * Our data observer just notifies an update for all weather widgets when it detects a change.
+ */
+class WeatherDataProviderObserver extends ContentObserver {
+    private AppWidgetManager mAppWidgetManager;
+    private ComponentName mComponentName;
+
+    WeatherDataProviderObserver(AppWidgetManager mgr, ComponentName cn, Handler h) {
+        super(h);
+        mAppWidgetManager = mgr;
+        mComponentName = cn;
+    }
+
+    @Override
+    public void onChange(boolean selfChange) {
+        // The data has changed, so notify the widget that the collection view needs to be updated.
+        // In response, the factory's onDataSetChanged() will be called which will requery the
+        // cursor for the new data.
+        mAppWidgetManager.notifyAppWidgetViewDataChanged(
+                mAppWidgetManager.getAppWidgetIds(mComponentName), R.id.weather_list);
+    }
+}
+
 
 public class CourseProvider extends AppWidgetProvider {
     public static String CLICK_ACTION = "com.example.android.weatherlistwidget.CLICK";
@@ -21,15 +46,16 @@ public class CourseProvider extends AppWidgetProvider {
 
     private static HandlerThread sWorkerThread;
     private static Handler sWorkerQueue;
+    private static WeatherDataProviderObserver sDataObserver;
 
 
-    private boolean mIsLargeLayout = true;
 
     public CourseProvider() {
         // Start the worker thread
         sWorkerThread = new HandlerThread("CourseProvider-worker");
         sWorkerThread.start();
         sWorkerQueue = new Handler(sWorkerThread.getLooper());
+
     }
 
     // XXX: clear the worker queue if we are destroyed?
@@ -41,6 +67,12 @@ public class CourseProvider extends AppWidgetProvider {
         // user interaction in the main app.  To ensure that the widget always reflects the current
         // state of the data, we must listen for changes and update ourselves accordingly.
         final ContentResolver r = context.getContentResolver();
+        if (sDataObserver == null) {
+            final AppWidgetManager mgr = AppWidgetManager.getInstance(context);
+            final ComponentName cn = new ComponentName(context, CourseProvider.class);
+            sDataObserver = new WeatherDataProviderObserver(mgr, cn, sWorkerQueue);
+            r.registerContentObserver(CourseDataProvider.CONTENT_URI, true, sDataObserver);
+        }
     }
 
     @Override
@@ -56,8 +88,22 @@ public class CourseProvider extends AppWidgetProvider {
             sWorkerQueue.post(new Runnable() {
                 @Override
                 public void run() {
-                    //A FAIRE EN CAS DE RECEPTION des DONNEES DE L
+                    final ContentResolver r = context.getContentResolver();
+                    final Cursor c = r.query(CourseDataProvider.CONTENT_URI, null, null, null,
+                            null);
+                    final int count = c.getCount();
 
+                    // We disable the data changed observer temporarily since each of the updates
+                    // will trigger an onChange() in our data observer.
+                    r.unregisterContentObserver(sDataObserver);
+                    for (int i = 0; i < count; ++i) {
+                        final Uri uri = ContentUris.withAppendedId(CourseDataProvider.CONTENT_URI, i);
+                        final ContentValues values = new ContentValues();
+                        values.put(CourseDataProvider.Columns.HOUR, new Random().nextInt(24));
+                        values.put(CourseDataProvider.Columns.MINUTE, new Random().nextInt(60));
+                        r.update(uri, values, null, null);
+                    }
+                    r.registerContentObserver(CourseDataProvider.CONTENT_URI, true, sDataObserver);
                     final AppWidgetManager mgr = AppWidgetManager.getInstance(context);
                     final ComponentName cn = new ComponentName(context, CourseProvider.class);
                     mgr.notifyAppWidgetViewDataChanged(mgr.getAppWidgetIds(cn), R.id.weather_list);
@@ -72,7 +118,7 @@ public class CourseProvider extends AppWidgetProvider {
         super.onReceive(ctx, intent);
     }
 
-    private RemoteViews buildLayout(Context context, int appWidgetId, boolean largeLayout) {
+    private RemoteViews buildLayout(Context context, int appWidgetId) {
         RemoteViews rv;
         // Specify the service to provide data for the collection widget.  Note that we need to
         // embed the appWidgetId via the data otherwise it will be ignored.
@@ -80,7 +126,7 @@ public class CourseProvider extends AppWidgetProvider {
         intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
         intent.setData(Uri.parse(intent.toUri(Intent.URI_INTENT_SCHEME)));
         rv = new RemoteViews(context.getPackageName(), R.layout.widget_layout);
-        rv.setRemoteAdapter(appWidgetId, R.id.weather_list, intent);
+        rv.setRemoteAdapter(R.id.weather_list, intent);
 
         // Set the empty view to be displayed if the collection is empty.  It must be a sibling
         // view of the collection view.
@@ -112,10 +158,10 @@ public class CourseProvider extends AppWidgetProvider {
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
         // Update each of the widgets with the remote adapter
-        for (int i = 0; i < appWidgetIds.length; ++i) {
+        for (int appWidgetId : appWidgetIds) {
             //TODO METre A JOUr LE BORDEL
-            RemoteViews layout = buildLayout(context, appWidgetIds[i], mIsLargeLayout);
-            appWidgetManager.updateAppWidget(appWidgetIds[i], layout);
+            RemoteViews layout = buildLayout(context, appWidgetId);
+            appWidgetManager.updateAppWidget(appWidgetId, layout);
 
         }
         super.onUpdate(context, appWidgetManager, appWidgetIds);

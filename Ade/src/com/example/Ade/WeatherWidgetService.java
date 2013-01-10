@@ -1,21 +1,5 @@
+
 package com.example.Ade;
-
-/*
- * Copyright (C) 2011 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 
 import android.appwidget.AppWidgetManager;
 import android.content.Context;
@@ -41,6 +25,7 @@ public class WeatherWidgetService extends RemoteViewsService {
 class StackRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
     private Context mContext;
     private Cursor mCursor;
+
     public StackRemoteViewsFactory(Context context, Intent intent) {
         mContext = context;
         intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,
@@ -59,28 +44,36 @@ class StackRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
     }
 
     public int getCount() {
-        return 3;
+        return mCursor.getCount();
     }
 
     public RemoteViews getViewAt(int position) {
         // Get the data for this position from the content provider
-        int temp = 0;
+        String lesson = "Unknown Day";
+        Hour hour = new Hour(0,0);
+        if (mCursor.moveToPosition(position)) {
+            final int hourColIndex = mCursor.getColumnIndex(CourseDataProvider.Columns.HOUR);
+            final int minColIndex = mCursor.getColumnIndex(CourseDataProvider.Columns.MINUTE);
+            final int lessonColIndex = mCursor.getColumnIndex(CourseDataProvider.Columns.LESSON);
+            lesson = mCursor.getString(lessonColIndex);
+            hour = new Hour(mCursor.getInt(hourColIndex),mCursor.getInt(minColIndex));
 
-        // Return a proper item with the proper day and temperature
-        final String formatStr = mContext.getResources().getString(R.string.item_format_string);
+        }
+
         final int itemId = R.layout.widget_item;
         RemoteViews rv = new RemoteViews(mContext.getPackageName(), itemId);
-        rv.setTextViewText(R.id.widget_item, String.format(formatStr, temp, "lesson"+position));
+        rv.setTextViewText(R.id.widget_item, hour + " /" + lesson);
 
         // Set the click intent so that we can handle it and show a toast message
         final Intent fillInIntent = new Intent();
         final Bundle extras = new Bundle();
-        extras.putString(CourseProvider.EXTRA_DAY_ID, "allo!");
+        extras.putString(CourseProvider.EXTRA_DAY_ID, lesson);
         fillInIntent.putExtras(extras);
         rv.setOnClickFillInIntent(R.id.widget_item, fillInIntent);
 
         return rv;
     }
+
     public RemoteViews getLoadingView() {
         // We aren't going to return a default loading view in this sample
         return null;
@@ -100,6 +93,11 @@ class StackRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
     }
 
     public void onDataSetChanged() {
-
+        // Refresh the cursor
+        if (mCursor != null) {
+            mCursor.close();
+        }
+        mCursor = mContext.getContentResolver().query(CourseDataProvider.CONTENT_URI, null, null,
+                null, null);
     }
 }

@@ -40,5 +40,10 @@
         <service android:name="WeatherWidgetService"
                  android:permission="android.permission.BIND_REMOTEVIEWS"
                  android:exported="false"/>
+
+        <!-- The content provider serving the (fake) weather data -->
+        <provider android:name="CourseDataProvider"
+                  android:authorities="com.example.Ade.provider"
+                  android:exported="true"/>
     </application>
 </manifest>
